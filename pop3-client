@@ -1,0 +1,66 @@
+#!/usr/bin/python3
+import sys,socket
+from termcolor import colored
+
+def getMails(server):
+	server.send("STAT\r\n".encode())
+	response = server.recv(128).decode()
+	return response.split()[1]
+
+def listMails(server):
+	server.send("LIST\r\n".encode())
+	response = server.recv(4096).decode()
+	for mail in response.split("\r\n")[1:-2]:
+		mailID = mail.split()[0]
+		server.send(("RETR "+mailID+"\r\n").encode())
+		recvMail = server.recv(4096).decode().split("\r\n")
+		for line in recvMail:
+			if "Subject:" in line:
+				mailSubject = ''.join(line.split(":")[1])
+			if "From:" in line:
+				mailFrom = ''.join(line.split(":")[1])
+			if "Date:" in line:
+				mailDate = ''.join(line.split(":")[1])
+		print("<{}>: {} -{} -{}".format(mailID,colored(mailFrom,"red"),colored(mailSubject,"green"),colored(mailDate,"blue")))
+
+def readMail(server,read):
+	server.send(("RETR "+read+"\r\n").encode())
+	recvMail = server.recv(4096).decode().split("\r\n\r\n")[1][:-1]
+	print(colored(64*"-","red"))
+	print(recvMail)
+	print(colored(64*"-","red"))
+
+def cWork(server,read):
+	if read in ("?","help"):
+		print("read <id> to read mail")
+		print("<quit,exit,q,e> to exit")
+	elif read.split()[0] == "read":
+		readMail(server,read.split()[1])
+	elif read in ("quit","exit","q","e"):
+		print(colored("Goodbye!","red"))
+		sys.exit(0)
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+
+server = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+server.connect((host,port))
+server.recv(128)
+username = input("username:$ ")
+server.send(("USER "+username+"\r\n").encode())
+server.recv(128)
+password = input("password:$ ")
+server.send(("PASS "+password+"\r\n").encode())
+response = server.recv(128)
+if "+OK Logged in" in response.decode():
+	print(colored("[OK] Logged in successfully!","green"))
+	print(colored("[INFO] You have {} unread mail.".format(getMails(server)),"yellow"))
+	print(colored(64*"-","red"))
+	listMails(server)
+	print(colored(64*"-","red"))
+	while 1:
+		read = input(colored("pop3-client:$ ","yellow")).lower()
+		cWork(server,read)
+else:
+	print(colored("[ERROR] Authentication failed! Something gone wrong.","red"))
+	sys.exit(0)
